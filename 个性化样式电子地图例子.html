@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>WMTS</title>
+  <script
+    src="./jsrsasign-all-min.js"></script>
+  <!-- <script src="https://kjur.github.io/jsrsasign/ext/cryptojs-312-core-fix-min.js"></script> -->
+  <link rel="stylesheet" href="https://openlayers.org/en/v3.20.1/css/ol.css" type="text/css">
+  <!-- The line below is only needed for old environments like Internet Explorer and Android 4.x -->
+  <script
+    src="https://cdn.polyfill.io/v2/polyfill.min.js?features=requestAnimationFrame,Element.prototype.classList,URL"></script>
+  <script src="https://openlayers.org/en/v3.20.1/build/ol.js"></script>
+  <script src="http://cdn.bootcss.com/blueimp-md5/1.1.0/js/md5.js"></script>
+</head>
+
+<body>
+  <div id="map" class="map"></div>
+  <script>
+    //和普通base64加密不一样
+    function base64UrlEncode(str) {
+      var encodedSource = CryptoJS.enc.Base64.stringify(str);
+      var reg = new RegExp('/', 'g');
+      encodedSource = encodedSource.replace(/=+$/, '').replace(/\+/g, '-').replace(reg, '_');
+      return encodedSource;
+    }
+
+    let header = JSON.stringify({
+      "alg": "HS256",
+      "typ": "JWT"
+    })
+	
+    let accessKey = "8cdc36ecd7*******8239f6f9d5f7c08";   //修改自己申请的accessKey，ak、sk不要弄反
+    let secretKey = "bb266bf41f*******3dfc4da71952fdb";   //修改自己申请的secretKey，ak、sk不要弄反
+	
+
+    //ak、sk和生成token建议在后端，避免前端调用的时候泄露
+    let payload = JSON.stringify({
+      "key": accessKey,
+      "exp": new Date().setHours(new Date().getHours()+1)
+    });
+    let secretSalt = "user";
+
+    let before_sign = base64UrlEncode(CryptoJS.enc.Utf8.parse(header)) + '.' + base64UrlEncode(CryptoJS.enc.Utf8.parse(payload));
+    let signature = CryptoJS.HmacSHA256(before_sign, secretKey);
+    signature = base64UrlEncode(signature);
+    let final_sign = before_sign + '.' + signature;
+
+    console.log(final_sign)
+
+	
+	//tdt_biaozhunyangshi_2017 标准样式
+	//tdt_kejiganyangshi_2017  科技样式
+	const url1 = 'https://ibcdsg.zj.gov.cn:8443/restapi/prod/IC33000020220811000009/mapserver/vmap/WMTS/1.0/zjvmap/tdt_kejiganyangshi_2017'	
+	const url2 = 'https://ibcdsg.zj.gov.cn:8443/restapi/prod/IC33000020220811000011/mapserver/label/WMTS/1.0/zjvmap/tdt_kejiganyangshi_2017'
+	
+    const baseUrl1 = url1+'?jwt='+final_sign+'&x-bg-auth-type=jwt_auth' // 网关地址
+	const baseUrl2 = url2+'?jwt='+final_sign+'&x-bg-auth-type=jwt_auth' // 网关地址
+
+    var projection = ol.proj.get('EPSG:4326');
+    var projectionExtent = projection.getExtent();
+    var size = ol.extent.getWidth(projectionExtent) / 256;
+    var resolutions = new Array(20);
+    var matrixIds = new Array(20);
+    for (var z = 0; z < 21; ++z) {
+      // generate resolutions and matrixIds arrays for this WMTS
+      resolutions[z] = size / Math.pow(2, z);
+      matrixIds[z] = z;
+    }
+
+	  	var emap = new ol.layer.Tile({
+            opacity: 1,
+            source: new ol.source.WMTS({
+              url: baseUrl1, 
+              layer: 'emap',
+              matrixSet: 'EPSG:4326',
+              format: 'image/png',
+              projection: projection,
+              tileGrid: new ol.tilegrid.WMTS({
+                origin: ol.extent.getTopLeft(projectionExtent),
+                resolutions: resolutions,
+                matrixIds: matrixIds
+              }),
+              style: 'default',
+              wrapX: true
+            })
+          });
+		  
+		 
+		var emap_lab = new ol.layer.Tile({
+            opacity: 1,
+            source: new ol.source.WMTS({
+              url: baseUrl2, 
+              layer: 'emap_lab',
+              matrixSet: 'EPSG:4326',
+              format: 'image/png',
+              projection: projection,
+              tileGrid: new ol.tilegrid.WMTS({
+                origin: ol.extent.getTopLeft(projectionExtent),
+                resolutions: resolutions,
+                matrixIds: matrixIds
+              }),
+              style: 'default',
+              wrapX: true
+            })
+          });
+	   
+	  
+	  	var	map = new ol.Map({
+		layers : [emap,emap_lab], // 初始加入图层,emap电子地图,imgmap影像地图，默认影像地图不可见
+		//layers : [emap], // 初始加入图层,emap电子地图,imgmap影像地图，默认影像地图不可见
+	    //layers : [beg_point], // 初始加入图层,emap电子地图,imgmap影像地图，默认影像地图不可见
+		target : document.getElementById('map'), // 目标组件
+		logo : false,
+		view : new ol.View({
+			projection : 'EPSG:4326', // 坐标系
+			maxZoom : 20, // 最大层级控制
+			center : [ 120.25664, 29.153607 ], // 初始中心点坐标
+			zoom : 8
+		// 初始层级
+		})
+	});
+  // Define an array of coordinates for the points
+  var points = [
+    [120.25664, 29.153607],
+    [121.25664, 30.153607],
+    [122.25664, 31.153607],
+    // Add more coordinates as needed
+  ];
+
+  // Create a vector source for the points
+  var vectorSource = new ol.source.Vector();
+
+  // Loop through the points array and create a feature for each point
+  for (var i = 0; i < points.length; i++) {
+    var point = points[i];
+    var feature = new ol.Feature({
+      geometry: new ol.geom.Point(ol.proj.fromLonLat(point))
+    });
+    vectorSource.addFeature(feature);
+  }
+
+  // Create a vector layer to display the points
+  var vectorLayer = new ol.layer.Vector({
+    source: vectorSource
+  });
+
+  // Add the vector layer to the map
+  map.addLayer(vectorLayer);
+  </script>
+</body>
+
+</html>
